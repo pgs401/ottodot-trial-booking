@@ -3,7 +3,9 @@
 ## Tools used
 
 Claude Code, on Opus 4.8 and Sonnet 5, was the sole implementation tool
-across all twelve milestones. Claude, in chat, was used beforehand for
+across all twelve milestones: the schema and its invariants, the domain
+services, the mock payment fixture, the HTTP API, the UI, the test suite,
+the README, and this document. Claude, in chat, was used beforehand for
 architecture review: two rounds of adversarial review against the design,
 one of which found a false claim in a planned code comment about lock
 scope, described below. No Copilot, no ChatGPT, no other assistant.
