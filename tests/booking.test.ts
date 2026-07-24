@@ -5,7 +5,7 @@ import { afterAll, beforeAll, expect, it, vi } from 'vitest';
 import { createBookingService } from '../src/domain/booking.service';
 import { getRoster } from '../src/domain/roster.service';
 import { expireStaleHolds } from '../src/domain/holds.service';
-import { createMockPsp } from '../src/payments/mock-psp';
+import { createMockPsp, type PaymentProvider } from '../src/payments/mock-psp';
 
 const pool = new Pool({
   connectionString: process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL,
@@ -131,4 +131,55 @@ it('an abandoned booking expires, releases the duplicate guard, and never touche
   // class again now that the abandoned hold is out of the active predicate.
   const rebooked = await svc.createBooking(parentId, studentId, cls);
   expect(rebooked.status).toBe('pending_payment');
+});
+
+it('a booking whose hold lapses during payment is never confirmed and is never charged', async () => {
+  const { provider, releaseGate } = createMockPsp();
+
+  // Explicit coordination: resolves the instant authorise is entered, so the
+  // wait below only starts once pm_gated has genuinely parked, not before.
+  let signalEntered!: () => void;
+  const authoriseEntered = new Promise<void>((resolve) => {
+    signalEntered = resolve;
+  });
+  const gatedProvider: PaymentProvider = {
+    authorise: (method) => {
+      const p = provider.authorise(method);
+      signalEntered();
+      return p;
+    },
+    capture: (ref) => provider.capture(ref),
+    void: (ref) => provider.void(ref),
+  };
+  const svc = createBookingService({ pool, psp: gatedProvider });
+
+  const cls = await newClass(4, 0);
+  const { parentId, studentId } = await newFamily();
+  const booking = await svc.createBooking(parentId, studentId, cls);
+  // In the future when confirmBooking starts, so the entry check at step 4
+  // passes; it lapses in real time while authorise sits gated open.
+  await pool.query(`UPDATE bookings SET hold_expires_at = now() + interval '200 milliseconds' WHERE id = $1`, [booking.id]);
+
+  const confirmPromise = svc.confirmBooking(booking.id, 'pm_gated');
+  await authoriseEntered;
+  await new Promise((r) => setTimeout(r, 500)); // let the hold genuinely lapse in wall clock time
+  releaseGate('psp_ref_1');
+  const result = await confirmPromise;
+
+  expect(result.status).toBe('expired');
+  const voidRows = await pool.query<{ n: number }>(
+    `SELECT count(*)::int AS n FROM payment_attempts WHERE booking_id = $1 AND stage = 'void'`,
+    [booking.id],
+  );
+  const captureRows = await pool.query<{ n: number }>(
+    `SELECT count(*)::int AS n FROM payment_attempts WHERE booking_id = $1 AND stage = 'capture'`,
+    [booking.id],
+  );
+  expect(voidRows.rows[0].n).toBe(1);
+  expect(captureRows.rows[0].n).toBe(0);
+  const count = await pool.query<{ confirmed_count: number }>(
+    'SELECT confirmed_count FROM trial_classes WHERE id = $1',
+    [cls],
+  );
+  expect(count.rows[0].confirmed_count).toBe(0);
 });

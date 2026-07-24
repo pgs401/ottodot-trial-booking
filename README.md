@@ -48,6 +48,31 @@ is a convenience here, not a requirement.
 `db/invariants.sql` can also be run by hand: `psql "$DATABASE_URL" -f
 db/invariants.sql`.
 
+The same guarantees, over HTTP, after `npm run dev` and against the seeded
+data (`parentId`, `studentId` and `trialClassId` below are seeded values):
+
+```bash
+# duplicate prevention: same child, same class, twice; 201 then 409
+curl -X POST localhost:3000/api/bookings -H 'Content-Type: application/json' \
+  -d '{"parentId":"44444444-4444-4444-4444-444444444444","studentId":"54444444-4444-4444-4444-444444444444","trialClassId":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"}'
+curl -X POST localhost:3000/api/bookings -H 'Content-Type: application/json' \
+  -d '{"parentId":"44444444-4444-4444-4444-444444444444","studentId":"54444444-4444-4444-4444-444444444444","trialClassId":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"}'
+
+# correct payment outcomes, and the attempt trail behind them
+ID=$(curl -s -X POST localhost:3000/api/bookings -H 'Content-Type: application/json' \
+  -d '{"parentId":"22222222-2222-2222-2222-222222222222","studentId":"52222222-2222-2222-2222-222222222222","trialClassId":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"}' \
+  | grep -oE '"id":"[^"]+"' | head -1 | cut -d'"' -f4)
+curl -X POST "localhost:3000/api/bookings/$ID/confirm" -H 'Content-Type: application/json' -d '{"paymentMethod":"pm_success"}'
+curl "localhost:3000/api/bookings/$ID"
+
+# capacity enforcement, read back over HTTP after the last seat is taken
+curl localhost:3000/api/admin/classes/bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb/roster
+```
+
+Four of the five routes are demonstrated above; the fifth, a plain class
+listing, was invoked by neither this section nor the interface and has been
+removed.
+
 ## 5. Concurrency and the last seat race
 
 Correctness in `confirmBooking` comes from four layers, each with one job.
@@ -180,8 +205,8 @@ the form a reviewer reads it in.
 
 **Built.** The schema and its two named invariants, a domain service that
 performs the four step confirmation sequence under lock, a mock two phase
-payment fixture, an HTTP API and a thin server rendered UI, and a ten case
-integration suite run against a real database.
+payment fixture, an HTTP API and a thin server rendered UI, and an eleven
+case integration suite run against a real database.
 
 **Cut, one line each.** No event log table, the booking and payment_attempts
 rows already are the history. No idempotency key columns, because the
@@ -191,6 +216,11 @@ authentication. No separate verification endpoint, because the test suite
 already proves these invariants, and two mechanisms checking the same
 property can disagree with each other.
 
+**Boundary.** The API route handlers and the interface are deliberately
+outside the automated suite, because every invariant is enforced in the
+domain layer and every test targets it directly. The routes parse,
+delegate and map errors, and hold no correctness logic.
+
 ## 12. Limitations, monitoring and next steps
 
 **Limitations.** The seat counter can drift and is checked rather than made
@@ -198,7 +228,15 @@ structurally impossible; a failed void leaves an authorisation to expire
 naturally; capture failure after a successful seat claim is unhandled and
 would need a `refund_due` status and a reconciliation worker; a crash
 between capture and commit orphans a capture; there is no authentication,
-so parent identity is trusted from the request.
+so parent identity is trusted from the request; hold expiry is now
+enforced at two points, on entry and immediately before the seat claim,
+and the window between the second check and COMMIT remains unbounded in
+principle, though nothing in it can overbook or double charge.
+
+Every invariant that has a test was verified by deliberately removing the
+guarantee and watching the test go red. Claims without a test are reasoned
+rather than proven, and the hold expiry gap above was found in exactly
+that space.
 
 **Monitor.** The `seat_lost` rate, the authorise decline rate, counter
 drift detections, the hold expiry backlog, and p99 latency on confirm.
@@ -210,14 +248,12 @@ event log, once more than one team needs to ask what happened and why.
 
 ## 13. Time spent, by phase
 
-Schema, migrations and the two named invariants: the smallest share, mostly
-settled once the invariants were decided.
+Implementation and tests, the schema, the domain service, concurrency
+correctness and the original suite: about two hours fifteen minutes.
 
-The domain service and concurrency correctness, including the last seat
-race test: the largest share, and worth it.
+Adversarial audit and fixes, finding the hold expiry gap and closing it:
+about forty five minutes.
 
-The HTTP API, the UI and the payment fixture: a moderate share, comparatively
-mechanical once the domain service existed.
+Documentation, the README and AI_USAGE.md: about thirty minutes.
 
-Verification and this document: a small, final share, spent closing the
-gaps a reviewer would hit first.
+Total: about three hours thirty minutes.

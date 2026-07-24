@@ -6,7 +6,7 @@ import { uuid } from '@/lib/validation';
 import { errorResponse } from '@/lib/http';
 
 const ConfirmBody = z.object({
-  paymentMethod: z.enum(['pm_success', 'pm_decline', 'pm_slow', 'pm_gated']),
+  paymentMethod: z.enum(['pm_success', 'pm_decline', 'pm_gated']),
 });
 
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {

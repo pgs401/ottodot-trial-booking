@@ -16,7 +16,7 @@ async function book(formData: FormData) {
   const trialClassId = String(formData.get('trialClassId'));
   const paymentMethod = String(formData.get('paymentMethod'));
   // pm_gated is a test-only token and must never reach the service from the UI.
-  const allowed = ['pm_success', 'pm_decline', 'pm_slow'];
+  const allowed = ['pm_success', 'pm_decline'];
   if (!allowed.includes(paymentMethod)) redirect(`/?parentId=${parentId}&error=Invalid+payment+method`);
 
   let bookingId: string;
@@ -27,7 +27,7 @@ async function book(formData: FormData) {
     const message = err instanceof Error ? err.message : 'Could not create booking';
     redirect(`/?parentId=${parentId}&error=${encodeURIComponent(message)}`);
   }
-  await bookingService.confirmBooking(bookingId, paymentMethod as 'pm_success' | 'pm_decline' | 'pm_slow');
+  await bookingService.confirmBooking(bookingId, paymentMethod as 'pm_success' | 'pm_decline');
   redirect(`/bookings/${bookingId}`);
 }
 
@@ -89,7 +89,6 @@ export default async function ParentFlow({
           <select name="paymentMethod" defaultValue="pm_success" aria-label="Payment method">
             <option value="pm_success">pm_success (authorise + capture)</option>
             <option value="pm_decline">pm_decline (card declined)</option>
-            <option value="pm_slow">pm_slow (authorises after a delay)</option>
           </select>
 
           <p>
