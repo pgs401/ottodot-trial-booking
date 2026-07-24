@@ -38,6 +38,20 @@ The Postgres container publishes on host port **5433** to avoid colliding with
 a local Postgres on 5432. A `pg_isready` healthcheck plus `--wait` on `db:up`
 ensures migrations never run against a container that is not ready yet.
 
+## Testing
+
+The suite (`npm test`, Vitest) runs against a real Postgres, pointed at
+`TEST_DATABASE_URL` (see `.env.example`). Each test file drops and recreates the
+schema and reseeds before running, so the target must be an existing but
+otherwise disposable database — never your development database. Create it once:
+
+```bash
+docker compose exec db createdb -U ottodot ottodot_trial_test
+```
+
+The test names are written as sentences, so the run output reads as a
+specification of what the system guarantees.
+
 ## Layout
 
 - `src/lib/db.ts` — the shared `pg` pool and a `withTransaction` helper.
