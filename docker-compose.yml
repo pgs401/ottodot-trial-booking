@@ -11,6 +11,10 @@ services:
       POSTGRES_PASSWORD: ottodot
     volumes:
       - ottodot_trial_data:/var/lib/postgresql/data
+      # Runs once on a cold volume: creates ottodot_trial_test alongside the
+      # POSTGRES_DB-created ottodot_trial, so `npm test` never needs a manual
+      # createdb step. See db/docker-initdb/01-create-test-db.sql.
+      - ./db/docker-initdb:/docker-entrypoint-initdb.d:ro
     healthcheck:
       # pg_isready reports healthy only once the server accepts connections.
       # `docker compose up -d --wait` blocks on this, so db:migrate can never
