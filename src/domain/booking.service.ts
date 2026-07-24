@@ -161,7 +161,10 @@ export function createBookingService(deps: { pool: Pool; psp: PaymentProvider })
         return mapBooking(b);
       }
 
-      // 4. Hold expired: mark expired and stop before touching the PSP.
+      // 4. Entry check: stops a booking whose hold had already lapsed before
+      // any payment call was made. This is the first of two points the
+      // deadline is enforced — see step 7 for the second. The deadline is
+      // enforced unconditionally, not only on entry.
       if (b.is_expired) {
         const u = await client.query(
           `UPDATE bookings SET status = 'expired', updated_at = now() WHERE id = $1 RETURNING *`,
@@ -192,7 +195,31 @@ export function createBookingService(deps: { pool: Pool; psp: PaymentProvider })
         return mapBooking(u.rows[0]);
       }
 
-      // 7. Claim the seat with the conditional UPDATE (the enforcement point).
+      // 7. Second check: the hold can lapse while authorisation was in
+      // flight. now() is fixed at transaction start, so this uses
+      // clock_timestamp(), the actual wall clock time, to catch it. Void the
+      // just-authorised payment and mark expired before ever attempting the
+      // seat claim. Rejected alternative: entry-only enforcement, on the
+      // grounds that once authorisation succeeds the hold protects only the
+      // duplicate guard, which this parent is about to consume anyway.
+      // Rejected because a deadline enforced only sometimes is harder to
+      // reason about than one that always is.
+      const stillLive = await client.query<{ is_expired: boolean }>(
+        'SELECT clock_timestamp() > $1 AS is_expired',
+        [b.hold_expires_at],
+      );
+      if (stillLive.rows[0].is_expired) {
+        const voided = await psp.void(auth.ref);
+        await recordAttempt(client, bookingId, 'void', 'succeeded', voided.ref);
+        const u = await client.query(
+          `UPDATE bookings SET status = 'expired', updated_at = now() WHERE id = $1 RETURNING *`,
+          [bookingId],
+        );
+        await client.query('COMMIT');
+        return mapBooking(u.rows[0]);
+      }
+
+      // 8. Claim the seat with the conditional UPDATE (the enforcement point).
       const claim = await client.query(
         `UPDATE trial_classes
             SET confirmed_count = confirmed_count + 1
@@ -201,7 +228,7 @@ export function createBookingService(deps: { pool: Pool; psp: PaymentProvider })
         [b.trial_class_id],
       );
 
-      // 8. Zero rows: the class filled while this user was paying. Void (no
+      // 9. Zero rows: the class filled while this user was paying. Void (no
       //    funds were ever captured) and mark seat_lost.
       if (claim.rowCount === 0) {
         const voided = await psp.void(auth.ref);
@@ -214,7 +241,7 @@ export function createBookingService(deps: { pool: Pool; psp: PaymentProvider })
         return mapBooking(u.rows[0]);
       }
 
-      // 9. Seat claimed: capture and confirm, all under the held locks.
+      // 10. Seat claimed: capture and confirm, all under the held locks.
       const captured = await psp.capture(auth.ref);
       await recordAttempt(client, bookingId, 'capture', 'succeeded', captured.ref);
       const u = await client.query(

@@ -5,7 +5,6 @@
 export type PaymentMethod =
   | 'pm_success' // authorises, then captures cleanly
   | 'pm_decline' // fails at authorise with failureCode card_declined
-  | 'pm_slow' //    authorises after a configurable delay (default 150ms)
   // pm_gated: authorise blocks until the test calls releaseGate(ref). The
   // important token — it lets the last-seat race test state the interleaving
   // explicitly instead of depending on a sleep to produce the ordering by luck.
@@ -26,8 +25,7 @@ export interface PaymentProvider {
 
 type AuthState = 'authorised' | 'captured' | 'voided';
 
-export function createMockPsp(options: { slowDelayMs?: number } = {}) {
-  const slowDelayMs = options.slowDelayMs ?? 150;
+export function createMockPsp() {
   const auths = new Map<string, AuthState>(); // real prior authorisations
   const gates = new Map<string, () => void>(); // pending pm_gated releases
   let seq = 0;
@@ -38,9 +36,6 @@ export function createMockPsp(options: { slowDelayMs?: number } = {}) {
       const ref = nextRef();
       if (method === 'pm_decline') {
         return { status: 'declined', ref, failureCode: 'card_declined' };
-      }
-      if (method === 'pm_slow') {
-        await new Promise((resolve) => setTimeout(resolve, slowDelayMs));
       }
       if (method === 'pm_gated') {
         await new Promise<void>((resolve) => gates.set(ref, resolve));
