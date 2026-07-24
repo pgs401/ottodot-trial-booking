@@ -79,7 +79,10 @@ layer, and asserts Postgres rejects it by constraint name: the invariant
 survives the application code being wrong. Test eight reproduces the last
 seat race with a gated payment authorisation, not a delay, so the
 interleaving is stated by the test, not timing; there is no sleep in it.
-Test nine issues ten simultaneous confirmations on separate pool
+No test uses a delay to arbitrate an interleaving; the one wall clock wait,
+in the hold lapse test, exists because a deadline has to actually pass,
+where waiting longer can only ever make the test more correct. Test nine
+issues ten simultaneous confirmations on separate pool
 connections and asserts exactly four confirmed and that the CHECK
 constraint never fired, the update doing the arbitration, not the
 backstop.
@@ -95,6 +98,6 @@ file, because nothing created the test database automatically, now fixed
 on cold start. Elapsed time from clone to green tests was about eighteen
 seconds.
 
-`npm test` passed identically, four files and ten tests, on six
+`npm test` passed identically, four files and eleven tests, on six
 invocations over three milestones, not one dedicated loop, stated plainly
 rather than oversold.
