@@ -157,12 +157,18 @@ it('a booking whose hold lapses during payment is never confirmed and is never c
   const { parentId, studentId } = await newFamily();
   const booking = await svc.createBooking(parentId, studentId, cls);
   // In the future when confirmBooking starts, so the entry check at step 4
-  // passes; it lapses in real time while authorise sits gated open.
-  await pool.query(`UPDATE bookings SET hold_expires_at = now() + interval '200 milliseconds' WHERE id = $1`, [booking.id]);
+  // passes; it lapses in real time while authorise sits gated open. The 2
+  // second margin exists so the confirmation transaction is certain to begin
+  // while the hold is still live: pool acquisition, BEGIN and the locking
+  // SELECT all have to land inside this window, or the entry check at step 4
+  // fires instead of the second check, and the void row assertion below is
+  // what would actually catch that — the booking would still end up
+  // 'expired' either way, but only the second check writes a void row.
+  await pool.query(`UPDATE bookings SET hold_expires_at = now() + interval '2 seconds' WHERE id = $1`, [booking.id]);
 
   const confirmPromise = svc.confirmBooking(booking.id, 'pm_gated');
   await authoriseEntered;
-  await new Promise((r) => setTimeout(r, 500)); // let the hold genuinely lapse in wall clock time
+  await new Promise((r) => setTimeout(r, 2500)); // let the hold genuinely lapse in wall clock time
   releaseGate('psp_ref_1');
   const result = await confirmPromise;
 

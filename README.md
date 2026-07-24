@@ -32,8 +32,11 @@ npm run db:seed
 npm test
 ```
 
-Any PostgreSQL instance works by pointing `DATABASE_URL` elsewhere, so Docker
-is a convenience here, not a requirement.
+The schema and the seed are plain PostgreSQL and run unmodified on any
+instance, but the npm scripts assume the bundled container: `db:reset` runs
+`docker compose down` and `up`, and `db:seed` runs `docker compose exec`.
+Pointing `DATABASE_URL` at a different instance means applying
+`db/migrations` and `db/seed.sql` by hand with `psql` instead.
 
 ## 4. Verify it
 
@@ -69,9 +72,8 @@ curl "localhost:3000/api/bookings/$ID"
 curl localhost:3000/api/admin/classes/bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb/roster
 ```
 
-Four of the five routes are demonstrated above; the fifth, a plain class
-listing, was invoked by neither this section nor the interface and has been
-removed.
+All four routes are demonstrated above. A fifth, a plain class listing, was
+removed because neither this section nor the interface invoked it.
 
 ## 5. Concurrency and the last seat race
 
@@ -115,8 +117,10 @@ where two callers both read three and both insert.
 
 The tradeoff accepted is the denormalised counter. `confirmed_count` can
 drift from the rows it summarises if something writes around the service
-layer. It is checked, by the `CHECK` constraint and by
-`db/invariants.sql`, rather than made structurally impossible.
+layer. The `CHECK` constraint does not detect that: it only bounds
+`confirmed_count` against capacity and would not notice a counter of three
+sitting alongside five confirmed bookings. Only `db/invariants.sql`
+detects drift; the counter is checked, not made structurally impossible.
 
 ## 6. Payment handling
 
@@ -182,7 +186,7 @@ stateDiagram-v2
 | Duplicate booking | warn early | map error | partial unique index enforces | |
 | Capacity of four | display only | interpret result | CHECK plus conditional update enforce | |
 | Payment outcome | show status | record every attempt | attempt history | |
-| Last seat race | never | void on loss | row lock arbitrates | |
+| Last seat race | never | void on loss | conditional update arbitrates | |
 | Stale holds | | | | expiry job |
 | Counter drift | | | | invariants query in tests |
 
