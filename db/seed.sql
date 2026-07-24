@@ -1,7 +1,15 @@
 -- ===========================================================================
 -- db/seed.sql — deterministic demo/test seed. Rerunnable: it truncates all
 -- five tables first, then re-inserts a fixed set of rows with stable UUIDs.
--- Run with:  psql "$DATABASE_URL" -f db/seed.sql
+-- Applied by `npm run db:seed` (which pipes this file into psql inside the db
+-- container); can also be run by hand: psql "$DATABASE_URL" -f db/seed.sql
+--
+-- No seeded class is empty: A has one confirmed, B three, C four. That is
+-- deliberate — none of these classes models the "fresh, zero-booking" state.
+-- The thundering-herd concurrency test does NOT lean on seed state for that:
+-- it creates its OWN class of capacity four and races bookings against it, so
+-- its starting point is controlled by the test, not by this file. That is why
+-- there is no empty fourth class here, and none should be added.
 --
 -- Row-to-edge-case map (so a reviewer reading only this file understands the
 -- whole test surface):
@@ -10,7 +18,9 @@
 --     P1 Budi Santoso / S1 Putri Santoso     — Indonesian
 --     P2 Tan Wei Jie  / S2 Rachel Tan        — Singaporean
 --     P3 Dewi Lestari / S3 Rangga Lestari    — Indonesian
---     P4 Siti Rahmah  / S4 Amir Rahman       — extra family, see note [B]
+--     P4 Siti Rahmah  / S4 Amir Rahman       — Singaporean; exists ONLY to
+--       supply the 4th distinct child that Class C needs to be full. It is a
+--       consequence of a constraint, not padding: see note [B].
 --
 --   Class A (Science, this coming Friday) — the "booking states" class.
 --     Carries one booking in each non-race state so every such edge is
@@ -45,11 +55,14 @@
 --       seats free), not 0. Invariant-correctness wins over the descriptive
 --       line, as instructed.
 --
---   [B] The brief says "three parents". Class C must be full with FOUR
---       confirmed bookings, and the one-active-per-student-class index forbids
---       seating the same child twice in one class — so four distinct children
---       are required. Hence a fourth family (P4/S4) exists solely to fill
---       Class C. The three named demo families remain the narrative actors.
+--   [B] The brief says "three parents", but a full Class C means FOUR
+--       confirmed bookings on it, and the index bookings_one_active_per_student_class
+--       forbids seating the same child twice in the same class. Four confirmed
+--       seats in one class therefore REQUIRE four distinct children. Three
+--       families can supply only three. The fourth family (P4/S4) exists for
+--       exactly this reason and no other — it is forced by the constraint, not
+--       added as filler. The three named families remain the narrative actors;
+--       P4/S4 only occupies Class C's fourth seat.
 --
 -- confirmed_count on every class equals that class's confirmed-booking count,
 -- so this seed passes all three queries in db/invariants.sql on a fresh run.

@@ -12,7 +12,7 @@
     "db:down": "docker compose down",
     "db:reset": "docker compose down -v && docker compose up -d --wait && npm run db:migrate",
     "db:migrate": "tsx scripts/migrate.ts",
-    "db:seed": "tsx scripts/seed.ts",
+    "db:seed": "docker compose exec -T db psql -v ON_ERROR_STOP=1 -U ottodot -d ottodot_trial < db/seed.sql",
     "jobs:expire-holds": "tsx scripts/expire-holds.ts"
   },
   "dependencies": {

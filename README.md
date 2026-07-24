@@ -31,7 +31,7 @@ npm run dev               # Next.js on http://localhost:3000
 | `npm run db:down`          | Stop the container (data volume preserved).                     |
 | `npm run db:reset`         | Drop the volume, recreate the container, and migrate — clean.   |
 | `npm run db:migrate`       | Apply pending `db/migrations/*.sql` files.                      |
-| `npm run db:seed`          | Seed development data (no-op until the schema exists).          |
+| `npm run db:seed`          | Apply `db/seed.sql` inside the db container (rerunnable).       |
 | `npm run jobs:expire-holds`| Release expired seat holds (no-op until the schema exists).     |
 
 The Postgres container publishes on host port **5433** to avoid colliding with
@@ -43,5 +43,7 @@ ensures migrations never run against a container that is not ready yet.
 - `src/lib/db.ts` — the shared `pg` pool and a `withTransaction` helper.
 - `src/lib/errors.ts` — typed domain errors with stable machine-readable codes.
 - `db/migrations/` — plain numbered SQL migrations.
-- `scripts/` — `tsx` entrypoints for migrate, seed, and jobs.
+- `db/seed.sql` — rerunnable demo/test seed (applied by `db:seed`).
+- `db/invariants.sql` — zero-rows-when-healthy invariant checks.
+- `scripts/` — `tsx` entrypoints for migrate and jobs.
 - `DEPENDENCIES.md` — why each dependency exists and what was rejected.
