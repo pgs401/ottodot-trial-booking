@@ -234,3 +234,48 @@ export function createBookingService(deps: { pool: Pool; psp: PaymentProvider })
 
   return { createBooking, confirmBooking };
 }
+
+export interface PaymentAttempt {
+  stage: string;
+  status: string;
+  providerRef: string | null;
+  amountCents: number;
+  currency: string;
+  failureCode: string | null;
+  createdAt: Date;
+}
+
+// Read model for GET /api/bookings/[id]: the booking plus its payment-attempt
+// trail, oldest first. Pure read — no psp, no transaction.
+export async function getBookingWithAttempts(
+  pool: Pool,
+  bookingId: string,
+): Promise<{ booking: Booking; attempts: PaymentAttempt[] }> {
+  const b = await pool.query('SELECT * FROM bookings WHERE id = $1', [bookingId]);
+  if (b.rowCount === 0) throw new NotFound('booking not found');
+  const a = await pool.query<{
+    stage: string;
+    status: string;
+    provider_ref: string | null;
+    amount_cents: number;
+    currency: string;
+    failure_code: string | null;
+    created_at: Date;
+  }>(
+    `SELECT stage, status, provider_ref, amount_cents, currency, failure_code, created_at
+       FROM payment_attempts WHERE booking_id = $1 ORDER BY created_at`,
+    [bookingId],
+  );
+  return {
+    booking: mapBooking(b.rows[0]),
+    attempts: a.rows.map((r) => ({
+      stage: r.stage,
+      status: r.status,
+      providerRef: r.provider_ref,
+      amountCents: r.amount_cents,
+      currency: r.currency,
+      failureCode: r.failure_code,
+      createdAt: r.created_at,
+    })),
+  };
+}
