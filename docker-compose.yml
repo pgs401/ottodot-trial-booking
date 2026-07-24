@@ -1,0 +1,25 @@
+services:
+  db:
+    image: postgres:16
+    # Host port 5433 (not 5432) so this never collides with a Postgres a
+    # developer already runs locally on the default port.
+    ports:
+      - "5433:5432"
+    environment:
+      POSTGRES_DB: ottodot_trial
+      POSTGRES_USER: ottodot
+      POSTGRES_PASSWORD: ottodot
+    volumes:
+      - ottodot_trial_data:/var/lib/postgresql/data
+    healthcheck:
+      # pg_isready reports healthy only once the server accepts connections.
+      # `docker compose up -d --wait` blocks on this, so db:migrate can never
+      # run against a container that has started but is not yet ready.
+      test: ["CMD-SHELL", "pg_isready -U ottodot -d ottodot_trial"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+      start_period: 5s
+
+volumes:
+  ottodot_trial_data:
